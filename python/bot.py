@@ -336,6 +336,7 @@ def fetch_live_api(session: requests.Session) -> dict:
         ),
         "x-app-ver": "6.47.0",
         "x-authorization-token": HDFCSKY_AUTH_TOKEN,
+        "Authorization": HDFCSKY_AUTH_TOKEN,
         "x-device-id": HDFCSKY_DEVICE_ID,
         "x-device-make": "Desktop",
         "x-device-model": "Chrome 154",
@@ -520,12 +521,35 @@ def fetch_recommendations(session: requests.Session) -> dict:
     return fetch_public_fallback(session)
 
 
+def ensure_auth_token():
+    """Checks if HDFCSKY_AUTH_TOKEN is present; if missing and running in interactive console, prompts to generate one."""
+    global HDFCSKY_AUTH_TOKEN
+    if not HDFCSKY_AUTH_TOKEN:
+        log("warn", "No HDFCSKY_AUTH_TOKEN found in environment or .env.")
+        if sys.stdin and sys.stdin.isatty():
+            try:
+                log("info", "Starting interactive authorization helper...")
+                from auth import run_interactive_auth
+                token = run_interactive_auth()
+                if token:
+                    HDFCSKY_AUTH_TOKEN = token
+                    os.environ["HDFCSKY_AUTH_TOKEN"] = token
+                    log("info", "Successfully generated and applied new auth token!")
+            except Exception as e:
+                log("error", f"Authorization helper error: {e}")
+                log("info", "Falling back to public research feed.")
+        else:
+            log("info", "Non-interactive session. Using public research feed fallback.")
+
+
 # ==========================================
 # MONITOR DAEMON (1-SECOND LOOP)
 # ==========================================
 
 def start_monitor():
     global RUNNING
+
+    ensure_auth_token()
 
     log("info", "=" * 50)
     log("info", "HDFC SKY LIVE RECOMMENDATION MONITOR (Python)")

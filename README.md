@@ -22,10 +22,18 @@ cd python
 pip install -r requirements.txt
 ```
 
-3. Run the bot:
+3. (Optional) Generate Auth Token via Phone + OTP + Password:
+If `HDFCSKY_AUTH_TOKEN` is not set, you can run the interactive authentication wizard:
+```bash
+python auth.py
+```
+This validates your phone number, sends an OTP, verifies your password/PIN, and automatically saves the token to `python/.env`.
+
+4. Run the bot:
 ```bash
 python bot.py
 ```
+*(If no token is found when starting `bot.py` interactively, it will automatically offer to generate one for you).*
 
 ---
 
