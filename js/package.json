@@ -1,0 +1,18 @@
+{
+  "name": "hdfcsky-telegram-monitor-js",
+  "version": "1.0.0",
+  "description": "Real-time HDFC Sky Recommendation Monitor for Telegram (Node.js)",
+  "main": "bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "keywords": [
+    "telegram",
+    "hdfcsky",
+    "trading",
+    "recommendations"
+  ],
+  "author": "",
+  "license": "ISC"
+}
