@@ -59,3 +59,12 @@ pm2 start bot.py --name "hdfc-monitor" --interpreter python
 cd js
 pm2 start bot.js --name "hdfc-monitor"
 ```
+
+---
+
+## 5. Run with Docker
+
+```bash
+docker build -t hdfc-monitor .
+docker run -d --name hdfc-monitor --env BOT_TOKEN="your_token" --env CHAT_ID="your_id" hdfc-monitor
+```
