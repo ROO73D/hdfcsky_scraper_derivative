@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-HDFC Sky Research Recommendation Telegram Monitor
-Pure Python 24/7 Background Daemon (1-second polling)
+HDFC Sky Live Research & Derivative Recommendation Telegram Monitor
+Connects to HDFC Sky's Live API (with automatic public feed fallback)
 """
 
 import os
@@ -21,7 +21,10 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
-# Simple built-in .env reader (zero extra dependencies)
+
+# ==========================================
+# BUILT-IN .ENV LOADER
+# ==========================================
 def _load_env_file():
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
@@ -40,23 +43,32 @@ def _load_env_file():
 
 _load_env_file()
 
+
 # ==========================================
 # CONFIGURATION
-# Only BOT_TOKEN & CHAT_ID come from .env
-# All other settings are configured internally
 # ==========================================
 BOT_TOKEN = os.getenv("BOT_TOKEN", "6159801726:AAEdnX4VPdT3pxdS7mVgL8bKA7SYsaAJf4w")
 CHAT_ID = os.getenv("CHAT_ID", "385686409")
 
-# Internal constants
-API_URL = (
+# HDFC Sky Live API Credentials (Optional)
+HDFCSKY_AUTH_TOKEN = os.getenv(
+    "HDFCSKY_AUTH_TOKEN",
+    "eyJhbGciOiJIUzI1NiJ9.eyJkZXZpY2UiOiJ3ZWIiLCJjbGllbnRfaWQiOiJTMzIwMjIwNSIsImNsaWVudF90b2tlbiI6ImRjUUErd1NPbEt6eS92YXRPemV1cG9tNUx2c0RuV1lsZTZvSlRYYVg1T3BVd041K25abng1TFp2ZXM1N3VDZnRVQ2V3bzM5NkVTSVh3YnV5eTA2UkUrZ2tYUTVuN2ZMVDlqQzNMZkVyS1ZSRjRKSXd5RE0rRkZqb2JEN203RURUUmxzamFvWlZLY015RFA3OVhwcnhNcXY5TFQxQ1Y0TUF6SjYwREVrYVYxK0JCdEZPTHNUWXVoU2F3Uk9DTFV1bm5adHZ6QjcvYVZvZkZmMkRYTVA1NWZaVytDbDl0RFIvN2RKVGFGQnlnclE9IiwiZGV2aWNlX2lkIjoiNThiNzgwMjItOWJhMi00NWJmLWFhYjAtNzRjZGE1OTdlY2E2IiwiYmxhY2tsaXN0X2tleSI6IlMzMjAyMjA1OmE2NThhNjFjNTMwNDQyMWZiNWExZDU0MDc2YTlkNjUwIiwiZXhwIjoxNzkxMjcyMzU5MzE2LCJpYXQiOjE3OTExODU5NTl9.mJmS-k7OZmqRKuC629QgsbKkknu8v-AeE1EnDy_Y4us",
+)
+HDFCSKY_DEVICE_ID = os.getenv("HDFCSKY_DEVICE_ID", "58b78022-9ba2-45bf-aab0-74cda597eca6")
+
+# Endpoints
+LIVE_API_OPEN_URL = "https://api.hdfcsky.com/data/api/research/v1/open-calls?category=FNO"
+LIVE_API_CLOSED_URL = "https://api.hdfcsky.com/data/api/research/v1/closed-calls?category=FNO"
+PUBLIC_API_URL = (
     "https://hdfcsky.com/internal-api/v1/public/get-research-calls"
     "?category=derivatives-recommendations&subcategory=&limit=100"
 )
-POLL_INTERVAL_SEC = 1.0         # Check every 1 second
-INITIAL_MAX_ALERTS = 10          # Send top 10 on first run
+
+POLL_INTERVAL_SEC = 1.0          # Live check every 1 second
+INITIAL_MAX_ALERTS = 10           # Send top 10 on first run
 REQUEST_TIMEOUT_SEC = 10.0
-TELEGRAM_SEND_DELAY_SEC = 0.35   # Delay between sends to avoid Telegram rate limits
+TELEGRAM_SEND_DELAY_SEC = 0.35    # Delay to avoid Telegram 429 rate limit
 
 RUNNING = True
 
@@ -139,22 +151,38 @@ def format_telegram_message(call: dict) -> str:
 
     status = call.get("display_status") or ("OPEN" if call.get("status") == "open" else "CLOSED")
     status_emoji = "🟢"
-    if status == "PROFIT BOOKED":
+    if "TARGET" in status.upper() or status == "PROFIT BOOKED":
         status_emoji = "🎯"
-    elif status == "STOPLOSS HIT":
+    elif "STOPLOSS" in status.upper() or "SL" in status.upper():
         status_emoji = "🛑"
     elif status == "CLOSED":
         status_emoji = "⚪"
 
+    open_price = call.get("open_price")
+    target = call.get("target")
+    stoploss = call.get("stoploss")
+    ltp = call.get("ltp")
+    prev_close = call.get("pclose") or call.get("prev_close")
+
     # 1-Day LTP change
     ltp_change_str = ""
-    ltp = call.get("ltp")
-    prev_close = call.get("prev_close")
     if ltp and prev_close and prev_close > 0:
         diff = ltp - prev_close
         pct = (diff / prev_close) * 100
         sign = "+" if diff >= 0 else ""
         ltp_change_str = f" ({sign}{format_number(diff)} / {sign}{format_number(pct)}%)"
+
+    # Live P&L from Entry
+    live_pnl_str = ""
+    if ltp and open_price and open_price > 0:
+        if action == "BUY":
+            pnl_val = ltp - open_price
+            pnl_pct = (pnl_val / open_price) * 100
+        else:
+            pnl_val = open_price - ltp
+            pnl_pct = (pnl_val / open_price) * 100
+        pnl_sign = "+" if pnl_val >= 0 else ""
+        live_pnl_str = f" ({pnl_sign}{format_number(pnl_pct)}%)"
 
     # Days remaining to expiry
     now_ms = time.time() * 1000
@@ -182,7 +210,7 @@ def format_telegram_message(call: dict) -> str:
         if call_profit >= 0:
             banner = f"📈 <b>{abs_val}% Profits in 1 day</b>\n"
         else:
-            banner = f"📉 <b>Down by {abs_val}% in last 1 day</b>\n"
+            banner = f"📉 <b>Down by ${abs_val}% in last 1 day</b>\n"
 
     # Badge / Tag
     tag = call.get("tag")
@@ -196,18 +224,19 @@ def format_telegram_message(call: dict) -> str:
     msg += f"<i>{pretty_name}</i>\n\n"
 
     # Key-values: Bold Key & Monospace Value
-    msg += f"<b>Reco. Price:</b> <code>₹{format_currency(call.get('open_price'))}</code>\n"
+    msg += f"<b>Reco. Price:</b> <code>₹{format_currency(open_price)}</code>\n"
 
-    target_line = f"<b>Target Price:</b> <code>₹{format_currency(call.get('target'))}"
+    target_line = f"<b>Target Price:</b> <code>₹{format_currency(target)}"
     if call.get("target_2"):
         target_line += f" | T2: ₹{format_currency(call.get('target_2'))}"
     target_line += "</code>\n"
     msg += target_line
 
-    msg += f"<b>Stop Loss:</b> <code>₹{format_currency(call.get('stoploss'))}</code>\n"
+    msg += f"<b>Stop Loss:</b> <code>₹{format_currency(stoploss)}</code>\n"
 
     if ltp and ltp > 0:
         msg += f"<b>LTP:</b> <code>₹{format_currency(ltp)}{ltp_change_str}</code>\n"
+        msg += f"<b>Live P&amp;L:</b> <code>{live_pnl_str.strip() or '-'}</code>\n"
 
     msg += f"<b>Returns:</b> <code>{returns_str}</code>\n"
     msg += f"<b>Status:</b> {status_emoji} <code>{escape(status)}</code>\n\n"
@@ -215,7 +244,9 @@ def format_telegram_message(call: dict) -> str:
     # Expandable dropdown 1: More Trade Info
     details = "<blockquote expandable><b>📊 MORE TRADE INFO</b>\n"
     details += f"<b>Exchange:</b> <code>{escape(str(call.get('exchange') or '').upper())}</code>\n"
-    details += f"<b>Segment:</b> <code>{escape(str(call.get('market') or '').upper())} • {escape(str(call.get('type') or '').upper())}</code>\n"
+    details += f"<b>Segment:</b> <code>{escape(str(call.get('market') or call.get('derivative_source') or '').upper())} • {escape(str(call.get('ins_type') or call.get('type') or '').upper())}</code>\n"
+    if call.get("token"):
+        details += f"<b>Token:</b> <code>{call.get('token')}</code>\n"
     if call.get("lot_size"):
         details += f"<b>Lot Size:</b> <code>{call.get('lot_size')}</code>\n"
     if call.get("horizon"):
@@ -227,15 +258,13 @@ def format_telegram_message(call: dict) -> str:
     if prev_close and prev_close > 0:
         details += f"<b>Prev. Close:</b> <code>₹{format_currency(prev_close)}</code>\n"
     if call.get("validity"):
-        val_date = datetime.datetime.fromtimestamp(call.get("validity") / 1000, tz=datetime.timezone.utc).strftime("%d %b %Y")
+        val_ms = call.get("validity")
+        val_date = datetime.datetime.fromtimestamp(val_ms / 1000, tz=datetime.timezone.utc).strftime("%d %b %Y")
         details += f"<b>Validity:</b> <code>{val_date}</code>\n"
-    if call.get("order_value") and call.get("order_value") > 0:
-        details += f"<b>Order Value:</b> <code>₹{format_currency(call.get('order_value'))}</code>\n"
-    if call.get("order_count"):
-        client_count = call.get("unique_client_order_count") or call.get("order_count")
-        details += f"<b>Orders Placed:</b> <code>{call.get('order_count')} ({client_count} clients)</code>\n"
     if call.get("closed_price"):
         details += f"<b>Closed Price:</b> <code>₹{format_currency(call.get('closed_price'))}</code>\n"
+    if call.get("report_url"):
+        details += f'<b>Report:</b> <a href="{escape(call.get("report_url"))}">Download PDF</a>\n'
     details += "</blockquote>\n\n"
     msg += details
 
@@ -292,10 +321,120 @@ def send_telegram_message(session: requests.Session, text: str, max_retries: int
 
 
 # ==========================================
-# HDFC SKY API FETCH & PARSE
+# HDFC SKY API FETCH & PARSE (LIVE + FALLBACK)
 # ==========================================
 
-def fetch_recommendations(session: requests.Session) -> dict:
+def fetch_live_api(session: requests.Session) -> dict:
+    """Fetches live real-time recommendations directly from api.hdfcsky.com."""
+    headers = {
+        "accept": "application/json, text/plain, */*",
+        "origin": "https://hdfcsky.com",
+        "referer": "https://hdfcsky.com/",
+        "user-agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36"
+        ),
+        "x-app-ver": "6.47.0",
+        "x-authorization-token": HDFCSKY_AUTH_TOKEN,
+        "x-device-id": HDFCSKY_DEVICE_ID,
+        "x-device-make": "Desktop",
+        "x-device-model": "Chrome 154",
+        "x-device-os": "Windows",
+        "x-device-type": "web",
+    }
+
+    resp = session.get(LIVE_API_OPEN_URL, headers=headers, timeout=REQUEST_TIMEOUT_SEC)
+
+    if resp.status_code == 401:
+        raise PermissionError("401 Unauthorized: HDFCSKY_AUTH_TOKEN has expired or is invalid.")
+
+    resp.raise_for_status()
+    data = resp.json().get("data", [])
+    calls_map = {}
+
+    for group in data:
+        for call in group.get("calls", []):
+            call_id = call.get("id")
+            if not call_id:
+                continue
+
+            calls_map[call_id] = {
+                "id": call_id,
+                "title": call.get("pretty_name") or call.get("name") or call.get("symbol"),
+                "symbol": call.get("symbol") or "-",
+                "exchange": call.get("exchange") or "nse",
+                "type": call.get("ins_type") or "-",
+                "market": call.get("derivative_source") or "FNO",
+                "strike": call.get("strike_price") if call.get("strike_price") is not None else "-",
+                "transaction": call.get("transaction") or "buy",
+                "tag": call.get("tag") or "",
+                "status": "open",
+                "display_status": "OPEN",
+                "open_price": call.get("open_price") or call.get("call_open_price"),
+                "target": call.get("target"),
+                "target_2": call.get("target_2"),
+                "stoploss": call.get("stoploss"),
+                "ltp": call.get("ltp"),
+                "pclose": call.get("pclose"),
+                "prev_close": call.get("pclose"),
+                "token": call.get("token"),
+                "validity": call.get("validity"),
+                "creation_time": call.get("creation_time") or call.get("openDate"),
+                "last_updated_time": call.get("currentDate") or call.get("creation_time") or 0,
+                "report_url": call.get("report_url"),
+                "derivative_source": call.get("derivative_source"),
+                "pretty_name": call.get("pretty_name") or call.get("name") or "",
+                "url": "https://hdfcsky.com/research",
+            }
+
+    # Also fetch recent closed calls to populate initial feed
+    try:
+        resp_closed = session.get(LIVE_API_CLOSED_URL, headers=headers, timeout=REQUEST_TIMEOUT_SEC)
+        if resp_closed.ok:
+            closed_list = resp_closed.json().get("data", {}).get("closeCall", [])
+            for call in closed_list:
+                call_id = call.get("id")
+                if not call_id or call_id in calls_map:
+                    continue
+
+                calls_map[call_id] = {
+                    "id": call_id,
+                    "title": call.get("pretty_name") or call.get("name") or call.get("symbol"),
+                    "symbol": call.get("symbol") or "-",
+                    "exchange": call.get("exchange") or "nse",
+                    "type": call.get("ins_type") or "-",
+                    "market": call.get("derivative_source") or "FNO",
+                    "strike": call.get("strike_price") if call.get("strike_price") is not None else "-",
+                    "transaction": call.get("transaction") or "buy",
+                    "tag": call.get("tag") or "",
+                    "status": "closed",
+                    "display_status": call.get("display_status") or "CLOSED",
+                    "open_price": call.get("open_price") or call.get("call_open_price"),
+                    "target": call.get("target"),
+                    "target_2": call.get("target_2"),
+                    "stoploss": call.get("stoploss"),
+                    "ltp": call.get("ltp") or 0,
+                    "pclose": call.get("pclose") or 0,
+                    "prev_close": call.get("pclose") or 0,
+                    "token": call.get("token"),
+                    "validity": call.get("validity"),
+                    "pnl_percentage": call.get("pnl_percentage") or 0,
+                    "closed_by": call.get("closed_by"),
+                    "creation_time": call.get("creation_time") or call.get("openDate"),
+                    "last_updated_time": call.get("last_updated_time") or call.get("creation_time") or 0,
+                    "report_url": call.get("report_url"),
+                    "derivative_source": call.get("derivative_source"),
+                    "pretty_name": call.get("pretty_name") or call.get("name") or "",
+                    "url": "https://hdfcsky.com/research",
+                }
+    except Exception as e:
+        log("debug", f"Optional closed calls fetch notice: {e}")
+
+    return calls_map
+
+
+def fetch_public_fallback(session: requests.Session) -> dict:
+    """Fallback fetcher using public research calls endpoint."""
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -306,7 +445,7 @@ def fetch_recommendations(session: requests.Session) -> dict:
         "Referer": "https://hdfcsky.com/research",
     }
 
-    resp = session.get(API_URL, headers=headers, timeout=REQUEST_TIMEOUT_SEC)
+    resp = session.get(PUBLIC_API_URL, headers=headers, timeout=REQUEST_TIMEOUT_SEC)
     resp.raise_for_status()
 
     data = resp.json().get("data", {})
@@ -367,6 +506,20 @@ def fetch_recommendations(session: requests.Session) -> dict:
     return calls_map
 
 
+def fetch_recommendations(session: requests.Session) -> dict:
+    """Smart router: uses Live HDFC Sky API when token is active, falls back to public API seamlessly."""
+    if HDFCSKY_AUTH_TOKEN:
+        try:
+            return fetch_live_api(session)
+        except PermissionError as pe:
+            log("warn", str(pe))
+            log("warn", "Seamlessly switching to public research feed...")
+        except Exception as e:
+            log("warn", f"Live API issue ({e}). Falling back to public research feed...")
+
+    return fetch_public_fallback(session)
+
+
 # ==========================================
 # MONITOR DAEMON (1-SECOND LOOP)
 # ==========================================
@@ -375,9 +528,10 @@ def start_monitor():
     global RUNNING
 
     log("info", "=" * 50)
-    log("info", "HDFC SKY RECOMMENDATION MONITOR (Python)")
+    log("info", "HDFC SKY LIVE RECOMMENDATION MONITOR (Python)")
     log("info", f"Polling Interval: {POLL_INTERVAL_SEC}s")
     log("info", f"Initial Alert Count: Top {INITIAL_MAX_ALERTS} recommendations")
+    log("info", f"Mode: {'Live Trading API' if HDFCSKY_AUTH_TOKEN else 'Public Research Feed'}")
     log("info", "=" * 50)
 
     previous_calls = {}
@@ -394,7 +548,7 @@ def start_monitor():
             consecutive_errors = 0
 
             if is_first_run:
-                log("info", f"First run: Total {len(current_calls)} recommendations fetched from feed.")
+                log("info", f"First run: Loaded {len(current_calls)} recommendations.")
 
                 all_list = list(current_calls.values())
                 initial_to_send = all_list[:INITIAL_MAX_ALERTS]
@@ -417,14 +571,14 @@ def start_monitor():
                     prev = previous_calls.get(call_id)
 
                     if not prev:
-                        # New recommendation
+                        # Brand new recommendation
                         updates_to_send.append(("NEW", call))
                     elif (
                         call["last_updated_time"] > prev["last_updated_time"]
                         or call["status"] != prev["status"]
                         or call["display_status"] != prev["display_status"]
                     ):
-                        # Modified call or status change
+                        # Modified call or status change (e.g. Target Achieved / Stop Loss Hit)
                         updates_to_send.append(("UPDATE", call))
 
                 if updates_to_send:
@@ -432,7 +586,8 @@ def start_monitor():
 
                     for tag, call in updates_to_send:
                         action = call.get("transaction", "buy").upper()
-                        log("info", f"[{tag}] {action} {call.get('symbol')} ({call.get('id')})")
+                        status_label = call.get("display_status") or tag
+                        log("info", f"[{status_label}] {action} {call.get('symbol')} ({call.get('id')})")
                         send_telegram_message(session, format_telegram_message(call))
                         time.sleep(TELEGRAM_SEND_DELAY_SEC)
 

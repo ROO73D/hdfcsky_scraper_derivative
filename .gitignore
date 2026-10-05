@@ -38,3 +38,5 @@ Thumbs.db
 # Logs & Temporary Files
 *.log
 scratch/
+broker-api-docs/
+**/broker-api-docs/
