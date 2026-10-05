@@ -1,70 +1,64 @@
-# How to Run & Deploy
+# HDFC Sky Research Recommendation Telegram Monitor (Python)
+
+A real-time 24/7 Python background monitor for HDFC Sky research recommendations and trading calls, broadcasting live market alerts to Telegram with rich formatting, expandable dropdowns, bold keys, and monospace values.
+
+---
 
 ## 1. Local Setup
 
-Create a `.env` file in the folder you want to use (`python/` or `js/`) with your Telegram credentials:
-
+1. Open `python/.env` (or copy from `python/.env.example`):
 ```env
 BOT_TOKEN="your_telegram_bot_token"
 CHAT_ID="your_telegram_chat_id"
+
+# Optional: Real-time Live API (from browser inspect)
+HDFCSKY_AUTH_TOKEN="your_x_authorization_token"
+HDFCSKY_DEVICE_ID="your_device_id"
 ```
 
-### Run Python:
+2. Install dependencies:
 ```bash
 cd python
 pip install -r requirements.txt
-python bot.py
 ```
 
-### Run Node.js:
+3. Run the bot:
 ```bash
-cd js
-npm start
+python bot.py
 ```
 
 ---
 
-## 2. Deploy to Railway (24/7 1-Second Monitoring)
+## 2. Deploy to Railway (24/7 Cloud Background Service)
 
 1. Go to [railway.app](https://railway.app) and create a **New Project**.
 2. Select **Deploy from GitHub repo** and choose this repository.
 3. In **Variables**, add:
    - `BOT_TOKEN`: `your_telegram_bot_token`
    - `CHAT_ID`: `your_telegram_chat_id`
-4. Railway will automatically detect the `Procfile` / `Dockerfile` and start the monitor daemon 24/7.
+   - `HDFCSKY_AUTH_TOKEN`: `your_token` (optional)
+   - `HDFCSKY_DEVICE_ID`: `your_device_id` (optional)
+4. Railway will automatically detect the `Procfile` / `Dockerfile` and start the Python monitor daemon 24/7.
 
 ---
 
-## 3. Deploy to Vercel (Automated Cron)
+## 3. Run with Docker
 
-1. Go to [vercel.com](https://vercel.com) and import this repository.
-2. In **Environment Variables**, add:
-   - `BOT_TOKEN`: `your_telegram_bot_token`
-   - `CHAT_ID`: `your_telegram_chat_id`
-3. Click **Deploy**.
-4. Vercel automatically runs the cron job (`/api/cron`) every minute in the background.
+```bash
+docker build -t hdfcsky-monitor .
+docker run -d --name hdfcsky-monitor \
+  --env BOT_TOKEN="your_bot_token" \
+  --env CHAT_ID="your_chat_id" \
+  hdfcsky-monitor
+```
 
 ---
 
 ## 4. Run 24/7 in Background on VPS (PM2)
 
-### Python:
 ```bash
 cd python
-pm2 start bot.py --name "hdfc-monitor" --interpreter python
-```
-
-### Node.js:
-```bash
-cd js
-pm2 start bot.js --name "hdfc-monitor"
-```
-
----
-
-## 5. Run with Docker
-
-```bash
-docker build -t hdfc-monitor .
-docker run -d --name hdfc-monitor --env BOT_TOKEN="your_token" --env CHAT_ID="your_id" hdfc-monitor
+pm2 start bot.py --name "hdfcsky-bot" --interpreter python
+pm2 save
+pm2 startup
 ```

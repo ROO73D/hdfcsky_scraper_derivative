@@ -1,13 +1,17 @@
-FROM node:20-alpine
+FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy project files
-COPY package.json ./
-COPY js/ ./js/
+# Prevent Python from writing pyc files and buffering stdout
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Set production environment
-ENV NODE_ENV=production
+# Install dependencies
+COPY python/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy bot code
+COPY python/ ./python/
 
 # Start 24/7 background monitor
-CMD ["node", "js/bot.js"]
+CMD ["python", "python/bot.py"]
