@@ -1,0 +1,22 @@
+{
+  "name": "hdfcsky-scraper-derivative",
+  "version": "1.0.0",
+  "description": "Real-time HDFC Sky Derivative Recommendation Telegram Monitor",
+  "type": "module",
+  "main": "js/bot.js",
+  "scripts": {
+    "start": "node js/bot.js",
+    "start:js": "node js/bot.js",
+    "start:py": "python python/bot.py"
+  },
+  "keywords": [
+    "telegram-bot",
+    "hdfcsky",
+    "trading",
+    "scraper",
+    "railway",
+    "vercel"
+  ],
+  "author": "",
+  "license": "ISC"
+}
